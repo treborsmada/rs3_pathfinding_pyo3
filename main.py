@@ -7,5 +7,6 @@ if __name__ == '__main__':
     end = (3430, 3389)
     result = rs3_pathfinding.a_star(start, end, floor)
     et = time.time()
-    print(result)
+    print("Ticks:", result[1])
+    print("Path:", result[0])
     print(et-st)
