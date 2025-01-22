@@ -42,7 +42,10 @@ impl Heuristic {
         }
     }
     pub fn h(&self, state: &State, end: (u16, u16)) -> usize{
-        let distance = (max(state.pos_x.abs_diff(end.0), state.pos_y.abs_diff(end.1)) - 1) as usize;
+        let mut distance = max(state.pos_x.abs_diff(end.0), state.pos_y.abs_diff(end.1)) as usize;
+        if distance > 0 {
+        distance = distance - 1;
+        }
         self.data[[distance, state.secd as usize, state.scd as usize, state.ecd as usize, state.bdcd as usize]] as usize
     }
 }

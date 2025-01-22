@@ -1,4 +1,5 @@
 use std::cmp::max;
+use pyo3::prelude::*;
 use crate::map_section::MapSection;
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
@@ -10,6 +11,12 @@ pub struct State {
     pub scd: u8,
     pub ecd: u8,
     pub bdcd: u8,
+}
+
+impl IntoPy<PyObject> for State {
+    fn into_py(self, py: Python<'_>) -> PyObject {
+        (self.pos_x, self.pos_y, self.direction, self.secd, self.scd, self.ecd, self.bdcd).into_py(py)
+    }
 }
 
 impl State {
