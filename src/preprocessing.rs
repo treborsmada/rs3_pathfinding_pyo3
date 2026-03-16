@@ -1,10 +1,10 @@
 use rayon::prelude::*;
-use std::{collections::{HashSet, HashMap, VecDeque},
-          cmp::{max, min},
+use std::{collections::HashMap,
+          cmp::max,
           path::Path,
           fs};
 use zune_inflate::DeflateDecoder;
-use ndarray::{Array1, Array2, Array3, Array5, ShapeBuilder};
+use ndarray::{Array2, Array3, Array5, ShapeBuilder};
 use ndarray_npy::{read_npy, write_npy};
 use indicatif::ProgressBar;
 use crate::util::{adj_positions, free_direction};
@@ -29,26 +29,38 @@ impl Process {
         let mut tiles = Vec::with_capacity(25);
         let start = self.get_movement_data(x, y, floor);
         let adj = adj_positions(x, y);
-        let mut visited = HashSet::new();
-        visited.insert((x, y));
-        let mut queue = VecDeque::new();
+        // 5x5 visited grid indexed by (dx+2, dy+2) where dx,dy in [-2,2]
+        let mut visited = [[false; 5]; 5];
+        visited[2][2] = true;
+        // queue holds at most 8 direct neighbors (level 1 only)
+        let mut queue = [(0usize, 0usize); 8];
+        let mut queue_len = 0;
         for i in 0..8 {
             let j = (2*i + i/4) % 8;
             if free_direction(start, j) {
-                tiles.push((adj[j].0, adj[j].1, j));
-                visited.insert(adj[j]);
-                queue.push_back(adj[j]);
+                let (nx, ny) = adj[j];
+                let dx = (nx as isize - x as isize + 2) as usize;
+                let dy = (ny as isize - y as isize + 2) as usize;
+                if dx < 5 && dy < 5 && !visited[dx][dy] {
+                    tiles.push((nx, ny, j));
+                    visited[dx][dy] = true;
+                    queue[queue_len] = (nx, ny);
+                    queue_len += 1;
+                }
             }
         }
-        while !queue.is_empty() {
-            let current = queue.pop_front().unwrap();
+        for qi in 0..queue_len {
+            let current = queue[qi];
             let current_move_data = self.get_movement_data(current.0, current.1, floor);
             let temp_adj = adj_positions(current.0, current.1);
             for i in 0..8 {
                 if free_direction(current_move_data, i) {
-                    if !visited.contains(&temp_adj[i]) {
-                        tiles.push((temp_adj[i].0, temp_adj[i].1, i));
-                        visited.insert(temp_adj[i]);
+                    let (nx, ny) = temp_adj[i];
+                    let dx = (nx as isize - x as isize + 2) as usize;
+                    let dy = (ny as isize - y as isize + 2) as usize;
+                    if dx < 5 && dy < 5 && !visited[dx][dy] {
+                        tiles.push((nx, ny, i));
+                        visited[dx][dy] = true;
                     }
                 }
             }
@@ -57,116 +69,125 @@ impl Process {
     }
 
     fn bd_range(&mut self, x: usize, y: usize, floor: usize) -> Vec<(usize, usize)> {
-        let mut set = HashSet::with_capacity(441);
-        self.bd_range_recursion(x, y, floor,1, 2, 0, 0, 0, &mut set);
-        self.bd_range_recursion(x, y, floor,3, 2, 4, 0, 0, &mut set);
-        self.bd_range_recursion(x, y, floor,5, 6, 4, 0, 0, &mut set);
-        self.bd_range_recursion(x, y, floor,7, 6, 0, 0, 0, &mut set);
-        set.into_iter().collect()
+        // 21x21 visited grid indexed by (dx+10, dy+10) where dx,dy in [-10,10]
+        let mut visited = [[false; 21]; 21];
+        self.bd_range_recursion(x, y, x, y, floor, 1, 2, 0, 0, 0, &mut visited);
+        self.bd_range_recursion(x, y, x, y, floor, 3, 2, 4, 0, 0, &mut visited);
+        self.bd_range_recursion(x, y, x, y, floor, 5, 6, 4, 0, 0, &mut visited);
+        self.bd_range_recursion(x, y, x, y, floor, 7, 6, 0, 0, 0, &mut visited);
+        let mut tiles = Vec::new();
+        for dx in 0..21usize {
+            for dy in 0..21usize {
+                if visited[dx][dy] {
+                    tiles.push((x + dx - 10, y + dy - 10));
+                }
+            }
+        }
+        tiles
     }
 
-    fn bd_range_recursion(&mut self, x: usize, y: usize, floor: usize, direction: usize, horizontal: usize, vertical: usize, dist_x: usize, dist_y: usize, tiles: &mut HashSet<(usize, usize)>) {
+    fn bd_range_recursion(&mut self, x: usize, y: usize, ox: usize, oy: usize, floor: usize, direction: usize, horizontal: usize, vertical: usize, dist_x: usize, dist_y: usize, visited: &mut [[bool; 21]; 21]) {
         let mut dist_x = dist_x;
         let mut dist_y = dist_y;
         if dist_x > 0 || dist_y > 0 {
-            tiles.insert((x, y));
+            let dx = (x as isize - ox as isize + 10) as usize;
+            let dy = (y as isize - oy as isize + 10) as usize;
+            visited[dx][dy] = true;
         }
         let curr_move = self.get_movement_data(x, y, floor);
         if dist_x < 10 && dist_y < 10 && free_direction(curr_move, direction) {
             let new_tile = adj_positions(x, y)[direction];
-            self.bd_range_recursion(new_tile.0, new_tile.1, floor, direction, horizontal, vertical,dist_x + 1, dist_y + 1, tiles);
+            self.bd_range_recursion(new_tile.0, new_tile.1, ox, oy, floor, direction, horizontal, vertical, dist_x + 1, dist_y + 1, visited);
         }
         else if dist_x < 10 && free_direction(curr_move, horizontal) {
             let new_tile = adj_positions(x, y)[horizontal];
-            self.bd_range_recursion(new_tile.0, new_tile.1, floor, direction, horizontal, vertical,dist_x + 1, dist_y, tiles);
+            self.bd_range_recursion(new_tile.0, new_tile.1, ox, oy, floor, direction, horizontal, vertical, dist_x + 1, dist_y, visited);
             dist_x = 10;
         }
         else if dist_y < 10 && free_direction(curr_move, vertical) {
             let new_tile = adj_positions(x, y)[vertical];
-            self.bd_range_recursion(new_tile.0, new_tile.1, floor, direction, horizontal, vertical,dist_x, dist_y + 1, tiles);
+            self.bd_range_recursion(new_tile.0, new_tile.1, ox, oy, floor, direction, horizontal, vertical, dist_x, dist_y + 1, visited);
             dist_y = 10;
         }
         let dist = [dist_x, dist_y];
-        for (i, direction) in [horizontal, vertical].into_iter().enumerate(){
+        for (i, dir) in [horizontal, vertical].into_iter().enumerate() {
             let mut d = dist[i];
             let mut curr_tile = (x, y);
             let mut curr_move = self.get_movement_data(x, y, floor);
-            while d < 10 && free_direction(curr_move, direction) {
-                curr_tile = adj_positions(curr_tile.0, curr_tile.1)[direction];
+            while d < 10 && free_direction(curr_move, dir) {
+                curr_tile = adj_positions(curr_tile.0, curr_tile.1)[dir];
                 curr_move = self.get_movement_data(curr_tile.0, curr_tile.1, floor);
-                tiles.insert(curr_tile);
+                let dx = (curr_tile.0 as isize - ox as isize + 10) as usize;
+                let dy = (curr_tile.1 as isize - oy as isize + 10) as usize;
+                visited[dx][dy] = true;
                 d += 1;
             }
         }
     }
 
-    fn surge_offset(&mut self, x: usize, y: usize, floor: usize, direction: usize) -> u8{
+    fn surge_offset(&mut self, x: usize, y: usize, floor: usize, direction: usize) -> u8 {
         let bd_data = self.get_bd_data(x, y, floor);
-        let d_x;
-        let d_y;
-        let mut current = 220;
-        let mut offset = 0;
-        match direction {
-            0 => {d_x = 0; d_y = 1;},
-            1 => {d_x = 1; d_y = 1;},
-            2 => {d_x = 1; d_y = 0;},
-            3 => {d_x = 1; d_y = -1;},
-            4 => {d_x = 0; d_y = -1;},
-            5 => {d_x = -1; d_y = -1;},
-            6 => {d_x = -1; d_y = 0;},
-            7 => {d_x = -1; d_y = 1;},
+        let (d_x, d_y): (i64, i64) = match direction {
+            0 => (0, 1),
+            1 => (1, 1),
+            2 => (1, 0),
+            3 => (1, -1),
+            4 => (0, -1),
+            5 => (-1, -1),
+            6 => (-1, 0),
+            7 => (-1, 1),
             _ => panic!()
-        }
+        };
+        let mut current: i64 = 220;
+        let mut offset = 0;
         for i in 0..10 {
             current += d_x + d_y * 21;
-            if (bd_data[[current as usize / 64]] >> (current % 64)) & 1 == 1 {
+            if (bd_data[current as usize / 64] >> (current as usize % 64)) & 1 == 1 {
                 offset = 1 + i;
             }
         }
         offset
     }
 
-    fn escape_offset(&mut self, x: usize, y: usize, floor: usize, direction: usize) -> u8{
+    fn escape_offset(&mut self, x: usize, y: usize, floor: usize, direction: usize) -> u8 {
         let bd_data = self.get_bd_data(x, y, floor);
-        let d_x;
-        let d_y;
-        let mut current = 220;
-        let mut offset = 0;
-        match direction {
-            0 => {d_x = 0; d_y = -1;},
-            1 => {d_x = -1; d_y = -1;},
-            2 => {d_x = -1; d_y = 0;},
-            3 => {d_x = -1; d_y = 1;},
-            4 => {d_x = 0; d_y = 1;},
-            5 => {d_x = 1; d_y = 1;},
-            6 => {d_x = 1; d_y = 0;},
-            7 => {d_x = 1; d_y = -1;},
+        let (d_x, d_y): (i64, i64) = match direction {
+            0 => (0, -1),
+            1 => (-1, -1),
+            2 => (-1, 0),
+            3 => (-1, 1),
+            4 => (0, 1),
+            5 => (1, 1),
+            6 => (1, 0),
+            7 => (1, -1),
             _ => panic!()
-        }
+        };
+        let mut current: i64 = 220;
+        let mut offset = 0;
         for i in 0..7 {
             current += d_x + d_y * 21;
-            if (bd_data[[current as usize / 64]] >> (current % 64)) & 1 == 1 {
+            if (bd_data[current as usize / 64] >> (current as usize % 64)) & 1 == 1 {
                 offset = 1 + i;
             }
         }
         offset
     }
 
-    fn get_bd_data(&mut self, x: usize, y: usize, floor: usize) -> Array1<u64> {
+    // Returns a stack-allocated [u64; 7] instead of a heap-allocated Array1<u64>
+    fn get_bd_data(&mut self, x: usize, y: usize, floor: usize) -> [u64; 7] {
         if x < RS_LENGTH && y < RS_HEIGHT {
             let chunk_size = 1280;
             let (chunk_x, chunk_y) = (x / chunk_size, y / chunk_size);
-            if let Some(data) = self.bd_data.get(&(chunk_x, chunk_y, floor)) {
-                data.slice(ndarray::s![x % chunk_size, y % chunk_size, ..]).to_owned()
-            } else {
+            let data = self.bd_data.entry((chunk_x, chunk_y, floor)).or_insert_with(|| {
                 let path = format!("MapData/BD/bd-{chunk_x}-{chunk_y}-{floor}.npy");
-                let data: Array3<u64> = read_npy(path).unwrap();
-                let result = data.slice(ndarray::s![x % chunk_size, y % chunk_size, ..]).to_owned();
-                self.bd_data.insert((chunk_x, chunk_y, floor), data);
-                result
-            }
+                read_npy(path).unwrap()
+            });
+            let xi = x % chunk_size;
+            let yi = y % chunk_size;
+            [data[[xi,yi,0]], data[[xi,yi,1]], data[[xi,yi,2]], data[[xi,yi,3]],
+             data[[xi,yi,4]], data[[xi,yi,5]], data[[xi,yi,6]]]
         } else {
-            Array1::from(vec![0,0,0,0,0,0,0])
+            [0; 7]
         }
     }
 
@@ -174,15 +195,11 @@ impl Process {
         if x < RS_LENGTH && y < RS_HEIGHT {
             let chunk_size = 1280;
             let (chunk_x, chunk_y) = (x / chunk_size, y / chunk_size);
-            if let Some(data) = self.movement_data.get(&(chunk_x, chunk_y, floor)) {
-                data[[x % chunk_size, y % chunk_size]]
-            } else {
+            let data = self.movement_data.entry((chunk_x, chunk_y, floor)).or_insert_with(|| {
                 let path = format!("MapData/Move/move-{chunk_x}-{chunk_y}-{floor}.npy");
-                let data: Array2<u8> = read_npy(path).unwrap();
-                let result = data[[x % chunk_size, y % chunk_size]];
-                self.movement_data.insert((chunk_x, chunk_y, floor), data);
-                result
-            }
+                read_npy(path).unwrap()
+            });
+            data[[x % chunk_size, y % chunk_size]]
         } else {
             0
         }
@@ -204,7 +221,7 @@ impl Process {
 
     fn process_bd_data(&mut self, x: usize, y: usize, floor: usize) -> [u64; 7] {
         let tiles = self.bd_range(x, y, floor);
-        let mut bd_data = [0, 0, 0, 0, 0, 0, 0];
+        let mut bd_data = [0u64; 7];
         for tile in tiles {
             let u = x - 10;
             let v = y - 10;
@@ -326,65 +343,41 @@ fn process_se_data(progress_bar: &ProgressBar) {
     });
 }
 
+// Computes the heuristic table by iterating distance in ascending order and reading
+// already-computed sub-problem values directly from arr, eliminating the HashMap memo.
 fn process_heuristic_data(max_distance: usize) {
-    let mut arr : Array5<u64> = Array5::zeros([max_distance+1, 18, 18, 18, 18]);
-    let mut memo = Memo::new();
-    for distance in 0..=max_distance {
-        for secd in 0..=17 {
-            for scd in 0..=17 {
-                for ecd in 0..=17 {
-                    for bdcd in 0..=17 {
-                        arr[[distance, secd, scd, ecd, bdcd]] = memo.distance_cds_rec(distance as isize, secd, scd, ecd, bdcd) as u64;
+    let mut arr: Array5<u64> = Array5::zeros([max_distance+1, 18, 18, 18, 18]);
+    // distance=0 is already 0 from zeros(); start from 1
+    for distance in 1..=max_distance {
+        for secd in 0..=17usize {
+            for scd in 0..=17usize {
+                for ecd in 0..=17usize {
+                    for bdcd in 0..=17usize {
+                        let mut result = usize::MAX;
+                        if bdcd == 0 {
+                            result = result.min(arr[[distance.saturating_sub(10), secd, scd, ecd, 17]] as usize);
+                        }
+                        if secd == 0 {
+                            result = result.min(arr[[distance.saturating_sub(10), 17, max(2, scd), 17, bdcd]] as usize);
+                        } else if scd == 0 {
+                            result = result.min(arr[[distance.saturating_sub(10), max(2, secd), 17, max(2, ecd), bdcd]] as usize);
+                        }
+                        if secd == 0 {
+                            result = result.min(arr[[distance.saturating_sub(7), 17, 17, max(2, ecd), bdcd]] as usize);
+                        } else if ecd == 0 {
+                            result = result.min(arr[[distance.saturating_sub(7), max(2, secd), max(2, scd), 17, bdcd]] as usize);
+                        }
+                        if secd != 0 && bdcd != 0 {
+                            let walk = arr[[distance.saturating_sub(2), max(secd, 1) - 1, max(scd, 1) - 1, max(ecd, 1) - 1, max(bdcd, 1) - 1]] as usize + 1;
+                            result = result.min(walk);
+                        }
+                        arr[[distance, secd, scd, ecd, bdcd]] = result as u64;
                     }
                 }
             }
         }
     }
     write_npy("HeuristicData/l_infinity_cds.npy", &arr).unwrap();
-}
-
-struct Memo {
-    data: HashMap<(isize, usize, usize, usize, usize), usize>
-}
-
-impl Memo {
-    fn new() -> Memo {
-        Memo {
-            data: HashMap::new()
-        }
-    }
-
-    fn distance_cds_rec(&mut self, distance: isize, secd: usize, scd: usize, ecd: usize, bdcd: usize) -> usize {
-        if self.data.contains_key(&(distance, secd, scd, ecd, bdcd)) {
-            return *self.data.get(&(distance, secd, scd, ecd, bdcd)).unwrap()
-        }
-        if distance <= 0 {
-            return 0;
-        }
-        let mut bd = usize::MAX;
-        let mut surge = usize::MAX;
-        let mut escape = usize::MAX;
-        let mut walk = usize::MAX;
-        if bdcd == 0 {
-            bd = self.distance_cds_rec(distance - 10, secd, scd, ecd, 17);
-        }
-        if secd == 0 {
-            surge = self.distance_cds_rec(distance - 10, 17, max(2, scd), 17, bdcd);
-        } else if scd == 0 {
-            surge = self.distance_cds_rec(distance - 10, max(2, secd), 17, max(2, ecd), bdcd);
-        }
-        if secd == 0 {
-            escape = self.distance_cds_rec(distance - 7, 17, 17, max(2, ecd), bdcd);
-        } else if ecd == 0 {
-            escape = self.distance_cds_rec(distance - 7, max(2, secd), max(2, scd), 17, bdcd);
-        }
-        if secd != 0 && bdcd != 0 {
-            walk = self.distance_cds_rec(distance - 2, max(secd, 1) - 1, max(scd, 1) - 1, max(ecd, 1) - 1, max(bdcd, 1) - 1) + 1;
-        }
-        let result = min(min(min(bd, surge), escape), walk);
-        self.data.insert((distance, secd, scd, ecd, bdcd), result);
-        result
-    }
 }
 
 pub fn setup(reset: bool) {
@@ -469,4 +462,3 @@ pub fn setup(reset: bool) {
     }
     progress_bar.finish();
 }
-
