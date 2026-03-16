@@ -1,5 +1,5 @@
 use pathfinding::prelude::astar;
-use ndarray::Array5;
+use ndarray::Array6;
 use ndarray_npy::read_npy;
 use std::cmp::max;
 use crate::{map_section::MapSection,
@@ -31,12 +31,12 @@ fn successors(state: &State, map: &MapSection) -> Vec<(State, usize)> {
 }
 
 pub struct Heuristic {
-    data: Array5<u64>,
+    data: Array6<u64>,
 }
 
 impl Heuristic {
     pub fn new() -> Heuristic{
-        let data: Array5<u64> = read_npy("HeuristicData/l_infinity_cds.npy").unwrap();
+        let data: Array6<u64> = read_npy("HeuristicData/l_infinity_cds.npy").unwrap();
         Heuristic {
             data
         }
@@ -46,6 +46,7 @@ impl Heuristic {
         if distance > 0 {
         distance = distance - 1;
         }
-        self.data[[distance, state.secd as usize, state.scd as usize, state.ecd as usize, state.bdcd as usize]] as usize
+        self.data[[distance, state.scd as usize, state.sscd as usize,
+                   state.ecd as usize, state.secd as usize, state.bdcd as usize]] as usize
     }
 }

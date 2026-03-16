@@ -4,7 +4,7 @@ use std::{collections::HashMap,
           path::Path,
           fs};
 use zune_inflate::DeflateDecoder;
-use ndarray::{Array2, Array3, Array5, ShapeBuilder};
+use ndarray::{Array2, Array3, Array6, ShapeBuilder};
 use ndarray_npy::{read_npy, write_npy};
 use indicatif::ProgressBar;
 use crate::util::{adj_positions, free_direction};
@@ -345,33 +345,45 @@ fn process_se_data(progress_bar: &ProgressBar) {
 
 // Computes the heuristic table by iterating distance in ascending order and reading
 // already-computed sub-problem values directly from arr, eliminating the HashMap memo.
+// Dimensions: [distance, scd, sscd, ecd, secd, bdcd]
 fn process_heuristic_data(max_distance: usize) {
-    let mut arr: Array5<u64> = Array5::zeros([max_distance+1, 18, 18, 18, 18]);
+    let mut arr: Array6<u64> = Array6::zeros([max_distance+1, 18, 18, 18, 18, 18]);
     // distance=0 is already 0 from zeros(); start from 1
     for distance in 1..=max_distance {
-        for secd in 0..=17usize {
-            for scd in 0..=17usize {
+        for scd in 0..=17usize {
+            for sscd in 0..=17usize {
                 for ecd in 0..=17usize {
-                    for bdcd in 0..=17usize {
-                        let mut result = usize::MAX;
-                        if bdcd == 0 {
-                            result = result.min(arr[[distance.saturating_sub(10), secd, scd, ecd, 17]] as usize);
+                    for secd in 0..=17usize {
+                        for bdcd in 0..=17usize {
+                            let d = distance;
+                            let mut result = usize::MAX;
+                            // BD
+                            if bdcd == 0 {
+                                result = result.min(arr[[d.saturating_sub(10), scd, sscd, ecd, secd, 17]] as usize);
+                            }
+                            // Surge primary
+                            if scd == 0 {
+                                result = result.min(arr[[d.saturating_sub(10), 17, max(2,sscd), max(2,ecd), max(2,secd), bdcd]] as usize);
+                            }
+                            // Surge secondary
+                            else if sscd == 0 {
+                                result = result.min(arr[[d.saturating_sub(10), max(2,scd), 17, max(2,ecd), max(2,secd), bdcd]] as usize);
+                            }
+                            // Escape primary
+                            if ecd == 0 {
+                                result = result.min(arr[[d.saturating_sub(7), max(2,scd), max(2,sscd), 17, max(2,secd), bdcd]] as usize);
+                            }
+                            // Escape secondary
+                            else if secd == 0 {
+                                result = result.min(arr[[d.saturating_sub(7), max(2,scd), max(2,sscd), max(2,ecd), 17, bdcd]] as usize);
+                            }
+                            // Walk (no surge and no BD available)
+                            if scd != 0 && sscd != 0 && bdcd != 0 {
+                                let walk = arr[[d.saturating_sub(2), max(scd,1)-1, max(sscd,1)-1, max(ecd,1)-1, max(secd,1)-1, max(bdcd,1)-1]] as usize + 1;
+                                result = result.min(walk);
+                            }
+                            arr[[distance, scd, sscd, ecd, secd, bdcd]] = result as u64;
                         }
-                        if secd == 0 {
-                            result = result.min(arr[[distance.saturating_sub(10), 17, max(2, scd), 17, bdcd]] as usize);
-                        } else if scd == 0 {
-                            result = result.min(arr[[distance.saturating_sub(10), max(2, secd), 17, max(2, ecd), bdcd]] as usize);
-                        }
-                        if secd == 0 {
-                            result = result.min(arr[[distance.saturating_sub(7), 17, 17, max(2, ecd), bdcd]] as usize);
-                        } else if ecd == 0 {
-                            result = result.min(arr[[distance.saturating_sub(7), max(2, secd), max(2, scd), 17, bdcd]] as usize);
-                        }
-                        if secd != 0 && bdcd != 0 {
-                            let walk = arr[[distance.saturating_sub(2), max(secd, 1) - 1, max(scd, 1) - 1, max(ecd, 1) - 1, max(bdcd, 1) - 1]] as usize + 1;
-                            result = result.min(walk);
-                        }
-                        arr[[distance, secd, scd, ecd, bdcd]] = result as u64;
                     }
                 }
             }

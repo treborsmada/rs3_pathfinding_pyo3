@@ -16,9 +16,10 @@ fn a_star(start: (u16, u16), end: (u16, u16), floor: usize) -> (Vec<State>, usiz
         pos_x: start.0,
         pos_y: start.1,
         direction: 0,
-        secd: 0,
         scd: 0,
+        sscd: 0,
         ecd: 0,
+        secd: 0,
         bdcd: 0,
     };
     let radius = 150;
