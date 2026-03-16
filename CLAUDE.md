@@ -9,8 +9,11 @@ A Rust library (exposed to Python via PyO3/maturin) that computes optimal paths 
 ## Build & Development Commands
 
 ```bash
-# Build the Python extension (development, in-place)
+# Build and install the Python extension in-place (dev)
 maturin develop
+
+# Build and install optimised (use for benchmarking/running)
+maturin develop --release
 
 # Build release wheel
 maturin build --release
@@ -36,6 +39,8 @@ Raw collision data lives in `SourceData/collision-{chunk_x}-{chunk_y}-{floor}.bi
 `HeuristicData/l_infinity_cds.npy` is also generated: a 5D lookup table `[distance, secd, scd, ecd, bdcd]` for the A* admissible heuristic.
 
 The world is split into chunks of 1280×1280 tiles. The map is 6400 (x) × 12800 (y) tiles across 4 floors (indices 0–3).
+
+The 200 chunks per stage are processed in parallel using Rayon. Per-tile intermediate data uses stack-allocated fixed arrays (`[[bool;5];5]` for walk, `[[bool;21];21]` for BD) to avoid heap allocation in the hot loop. The heuristic table is built iteratively (distance 0→500) reading sub-problems directly from the output array rather than a HashMap memo.
 
 **Stage 2 — A* pathfinding (lib.rs → pathfinding.rs)**
 `MapSection::create_map_section()` loads relevant chunks for the bounding box around the start/end (±150 tile radius) and builds in-memory hashmaps for walk and BD neighbors. The A* search then expands `State` nodes using walk moves (cost 1), BD teleport (cost 0), Surge (cost 0), or Escape (cost 0).
@@ -63,3 +68,14 @@ path, ticks = rs3_pathfinding.a_star((start_x, start_y), (end_x, end_y), floor)
 ```
 
 `setup(reset=True)` is called automatically on each `a_star` invocation; it regenerates all MapData. Pass `reset=False` (change in `lib.rs`) to skip regeneration when data is already present.
+
+### Dependencies
+
+| Crate | Purpose |
+|---|---|
+| `pyo3` | Python bindings |
+| `ndarray` / `ndarray-npy` | N-dimensional arrays and `.npy` file I/O |
+| `zune-inflate` | Zlib decompression of source collision data |
+| `pathfinding` | A* implementation |
+| `rayon` | Data-parallel chunk preprocessing |
+| `indicatif` | Progress bar during preprocessing |
