@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::{collections::{HashSet, HashMap, VecDeque},
           cmp::{max, min},
           path::Path,
@@ -227,16 +228,15 @@ fn build_movement_array(chunk_x: usize, chunk_y: usize, floor: usize) -> Array2<
 }
 
 fn process_movement_data(progress_bar: &ProgressBar) {
-    for i in 0..5 {
-        for j in 0..10 {
-            for k in 0..4 {
-                progress_bar.inc(1);
-                let arr = build_movement_array(i, j ,k);
-                let path = format!("MapData/Move/move-{i}-{j}-{k}.npy");
-                write_npy(path, &arr).unwrap();
-            }
-        }
-    }
+    let chunks: Vec<(usize, usize, usize)> = (0..5)
+        .flat_map(|i| (0..10).flat_map(move |j| (0..4).map(move |k| (i, j, k))))
+        .collect();
+    chunks.into_par_iter().for_each(|(i, j, k)| {
+        let arr = build_movement_array(i, j, k);
+        let path = format!("MapData/Move/move-{i}-{j}-{k}.npy");
+        write_npy(path, &arr).unwrap();
+        progress_bar.inc(1);
+    });
 }
 
 fn build_walk_array(chunk_x: usize, chunk_y: usize, floor: usize) -> Array3<u64> {
@@ -256,16 +256,15 @@ fn build_walk_array(chunk_x: usize, chunk_y: usize, floor: usize) -> Array3<u64>
 }
 
 fn process_walk_data(progress_bar: &ProgressBar) {
-    for i in 0..5 {
-        for j in 0..10 {
-            for k in 0..4 {
-                progress_bar.inc(1);
-                let arr = build_walk_array(i, j ,k);
-                let path = format!("MapData/Walk/walk-{i}-{j}-{k}.npy");
-                write_npy(path, &arr).unwrap();
-            }
-        }
-    }
+    let chunks: Vec<(usize, usize, usize)> = (0..5)
+        .flat_map(|i| (0..10).flat_map(move |j| (0..4).map(move |k| (i, j, k))))
+        .collect();
+    chunks.into_par_iter().for_each(|(i, j, k)| {
+        let arr = build_walk_array(i, j, k);
+        let path = format!("MapData/Walk/walk-{i}-{j}-{k}.npy");
+        write_npy(path, &arr).unwrap();
+        progress_bar.inc(1);
+    });
 }
 
 fn build_bd_array(chunk_x: usize, chunk_y: usize, floor: usize) -> Array3<u64> {
@@ -286,16 +285,15 @@ fn build_bd_array(chunk_x: usize, chunk_y: usize, floor: usize) -> Array3<u64> {
 }
 
 fn process_bd_data(progress_bar: &ProgressBar) {
-    for i in 0..5 {
-        for j in 0..10 {
-            for k in 0..4 {
-                progress_bar.inc(1);
-                let arr = build_bd_array(i, j ,k);
-                let path = format!("MapData/BD/bd-{i}-{j}-{k}.npy");
-                write_npy(path, &arr).unwrap();
-            }
-        }
-    }
+    let chunks: Vec<(usize, usize, usize)> = (0..5)
+        .flat_map(|i| (0..10).flat_map(move |j| (0..4).map(move |k| (i, j, k))))
+        .collect();
+    chunks.into_par_iter().for_each(|(i, j, k)| {
+        let arr = build_bd_array(i, j, k);
+        let path = format!("MapData/BD/bd-{i}-{j}-{k}.npy");
+        write_npy(path, &arr).unwrap();
+        progress_bar.inc(1);
+    });
 }
 
 fn build_se_array(chunk_x: usize, chunk_y: usize, floor: usize) -> Array3<u8> {
@@ -317,16 +315,15 @@ fn build_se_array(chunk_x: usize, chunk_y: usize, floor: usize) -> Array3<u8> {
 }
 
 fn process_se_data(progress_bar: &ProgressBar) {
-    for i in 0..5 {
-        for j in 0..10 {
-            for k in 0..4 {
-                progress_bar.inc(1);
-                let arr = build_se_array(i, j ,k);
-                let path = format!("MapData/SE/se-{i}-{j}-{k}.npy");
-                write_npy(path, &arr).unwrap();
-            }
-        }
-    }
+    let chunks: Vec<(usize, usize, usize)> = (0..5)
+        .flat_map(|i| (0..10).flat_map(move |j| (0..4).map(move |k| (i, j, k))))
+        .collect();
+    chunks.into_par_iter().for_each(|(i, j, k)| {
+        let arr = build_se_array(i, j, k);
+        let path = format!("MapData/SE/se-{i}-{j}-{k}.npy");
+        write_npy(path, &arr).unwrap();
+        progress_bar.inc(1);
+    });
 }
 
 fn process_heuristic_data(max_distance: usize) {
