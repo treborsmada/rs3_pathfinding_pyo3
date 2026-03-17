@@ -1,5 +1,5 @@
 use ndarray::{Array3, Axis, concatenate};
-use std::{collections::HashMap, cmp};
+use std::cmp;
 use crate::util::read_npy_compressed;
 
 #[derive(Debug)]
@@ -7,14 +7,12 @@ pub struct MapSection {
     #[allow(dead_code)]
     floor: usize,
     x_start: usize,
-    #[allow(dead_code)]
-    x_end: usize,
+    x_len: usize,
     y_start: usize,
-    #[allow(dead_code)]
-    y_end: usize,
+    y_len: usize,
     se_data: Array3<u8>,
-    walk_hashmap: HashMap<(u16, u16), Vec<(u16, u16, u8)>>,
-    bd_hashmap: HashMap<(u16, u16), Vec<(u16, u16, u8)>>,
+    walk_vec: Vec<Vec<(u16, u16, u8)>>,
+    bd_vec: Vec<Vec<(u16, u16, u8)>>,
 }
 
 impl MapSection {
@@ -52,34 +50,49 @@ impl MapSection {
     }
 
     pub fn create_map_section(x_start: usize, x_end: usize, y_start: usize, y_end: usize, floor: usize) -> MapSection {
+        let x_len = x_end - x_start + 1;
+        let y_len = y_end - y_start + 1;
         let bd_data = build_bd_array(x_start, x_end, y_start, y_end, floor);
         let se_data = build_se_array(x_start, x_end, y_start, y_end, floor);
         let walk_data = build_walk_array(x_start, x_end, y_start, y_end, floor);
-        let walk_hashmap = build_walk_hashmap(x_start, x_end, y_start, y_end, &walk_data);
-        let bd_hashmap = build_bd_hashmap(x_start, x_end, y_start, y_end, &bd_data);
+        let walk_vec = build_walk_vec(x_start, x_end, y_start, y_end, y_len, &walk_data);
+        let bd_vec = build_bd_vec(x_start, x_end, y_start, y_end, y_len, &bd_data);
         MapSection {
             floor,
             x_start,
-            x_end,
+            x_len,
             y_start,
-            y_end,
+            y_len,
             se_data,
-            walk_hashmap,
-            bd_hashmap,
+            walk_vec,
+            bd_vec,
         }
     }
 
-    pub fn walk_range(&self, x: u16, y: u16) -> &Vec<(u16, u16, u8)> {
-        self.walk_hashmap.get(&(x, y)).unwrap()
+    pub fn walk_range(&self, x: u16, y: u16) -> &[(u16, u16, u8)] {
+        let xi = (x as usize).wrapping_sub(self.x_start);
+        let yi = (y as usize).wrapping_sub(self.y_start);
+        if xi < self.x_len && yi < self.y_len {
+            &self.walk_vec[xi * self.y_len + yi]
+        } else {
+            &[]
+        }
     }
 
-    pub fn bd_range(&self, x: u16, y: u16) -> &Vec<(u16, u16, u8)> {
-        self.bd_hashmap.get(&(x, y)).unwrap()
+    pub fn bd_range(&self, x: u16, y: u16) -> &[(u16, u16, u8)] {
+        let xi = (x as usize).wrapping_sub(self.x_start);
+        let yi = (y as usize).wrapping_sub(self.y_start);
+        if xi < self.x_len && yi < self.y_len {
+            &self.bd_vec[xi * self.y_len + yi]
+        } else {
+            &[]
+        }
     }
 }
 
-fn build_bd_hashmap(x_start: usize, x_end: usize, y_start: usize, y_end: usize, arr: &Array3<u64>) -> HashMap<(u16, u16), Vec<(u16, u16, u8)>> {
-    let mut bd_hashmap = HashMap::new();
+fn build_bd_vec(x_start: usize, x_end: usize, y_start: usize, y_end: usize, y_len: usize, arr: &Array3<u64>) -> Vec<Vec<(u16, u16, u8)>> {
+    let x_len = x_end - x_start + 1;
+    let mut bd_vec = vec![Vec::new(); x_len * y_len];
     for x in x_start..=x_end {
         for y in y_start..=y_end {
             let mut tiles = Vec::new();
@@ -133,14 +146,15 @@ fn build_bd_hashmap(x_start: usize, x_end: usize, y_start: usize, y_end: usize, 
                     }
                 }
             }
-            bd_hashmap.insert((x as u16, y as u16), tiles);
+            bd_vec[(x - x_start) * y_len + (y - y_start)] = tiles;
         }
     }
-    bd_hashmap
+    bd_vec
 }
 
-fn build_walk_hashmap(x_start: usize, x_end: usize, y_start: usize, y_end: usize, arr: &Array3<u64>) -> HashMap<(u16, u16), Vec<(u16, u16, u8)>> {
-    let mut walk_hashmap = HashMap::new();
+fn build_walk_vec(x_start: usize, x_end: usize, y_start: usize, y_end: usize, y_len: usize, arr: &Array3<u64>) -> Vec<Vec<(u16, u16, u8)>> {
+    let x_len = x_end - x_start + 1;
+    let mut walk_vec = vec![Vec::new(); x_len * y_len];
     for x in x_start..=x_end {
         for y in y_start..=y_end {
             let mut tiles = Vec::new();
@@ -155,10 +169,10 @@ fn build_walk_hashmap(x_start: usize, x_end: usize, y_start: usize, y_end: usize
                     }
                 }
             }
-            walk_hashmap.insert((x as u16, y as u16), tiles);
+            walk_vec[(x - x_start) * y_len + (y - y_start)] = tiles;
         }
     }
-    walk_hashmap
+    walk_vec
 }
 
 fn build_bd_array(x_start: usize, x_end: usize, y_start: usize, y_end: usize, floor: usize) -> Array3<u64> {

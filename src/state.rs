@@ -128,6 +128,7 @@ impl State {
     }
 
     pub fn at_goal(&self, end: &(u16, u16)) -> bool{
-        end.0 - 1 <= self.pos_x && self.pos_x <= end.0 + 1  && end.1 - 1 <= self.pos_y && self.pos_y <= end.1 + 1
+        end.0.saturating_sub(1) <= self.pos_x && self.pos_x <= end.0 + 1
+            && end.1.saturating_sub(1) <= self.pos_y && self.pos_y <= end.1 + 1
     }
 }
