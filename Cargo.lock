@@ -586,6 +586,7 @@ dependencies = [
 name = "rs3_pathfinding"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "indicatif",
  "ndarray",
  "ndarray-npy",

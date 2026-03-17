@@ -2,12 +2,13 @@ use rayon::prelude::*;
 use std::{collections::HashMap,
           cmp::max,
           path::Path,
-          fs};
+          fs,
+          io::Write};
+use flate2::{Compression, write::ZlibEncoder};
 use zune_inflate::DeflateDecoder;
 use ndarray::{Array2, Array3, Array6, ShapeBuilder};
-use ndarray_npy::{read_npy, write_npy};
 use indicatif::ProgressBar;
-use crate::util::{adj_positions, free_direction};
+use crate::util::{adj_positions, free_direction, read_npy_compressed, write_npy_compressed};
 
 const RS_HEIGHT: usize = 12800;
 const RS_LENGTH: usize = 6400;
@@ -180,7 +181,7 @@ impl Process {
             let (chunk_x, chunk_y) = (x / chunk_size, y / chunk_size);
             let data = self.bd_data.entry((chunk_x, chunk_y, floor)).or_insert_with(|| {
                 let path = format!("MapData/BD/bd-{chunk_x}-{chunk_y}-{floor}.npy");
-                read_npy(path).unwrap()
+                read_npy_compressed(path)
             });
             let xi = x % chunk_size;
             let yi = y % chunk_size;
@@ -197,7 +198,7 @@ impl Process {
             let (chunk_x, chunk_y) = (x / chunk_size, y / chunk_size);
             let data = self.movement_data.entry((chunk_x, chunk_y, floor)).or_insert_with(|| {
                 let path = format!("MapData/Move/move-{chunk_x}-{chunk_y}-{floor}.npy");
-                read_npy(path).unwrap()
+                read_npy_compressed(path)
             });
             data[[x % chunk_size, y % chunk_size]]
         } else {
@@ -251,7 +252,7 @@ fn process_movement_data(progress_bar: &ProgressBar) {
     chunks.into_par_iter().for_each(|(i, j, k)| {
         let arr = build_movement_array(i, j, k);
         let path = format!("MapData/Move/move-{i}-{j}-{k}.npy");
-        write_npy(path, &arr).unwrap();
+        write_npy_compressed(path, &arr);
         progress_bar.inc(1);
     });
 }
@@ -279,7 +280,7 @@ fn process_walk_data(progress_bar: &ProgressBar) {
     chunks.into_par_iter().for_each(|(i, j, k)| {
         let arr = build_walk_array(i, j, k);
         let path = format!("MapData/Walk/walk-{i}-{j}-{k}.npy");
-        write_npy(path, &arr).unwrap();
+        write_npy_compressed(path, &arr);
         progress_bar.inc(1);
     });
 }
@@ -308,7 +309,7 @@ fn process_bd_data(progress_bar: &ProgressBar) {
     chunks.into_par_iter().for_each(|(i, j, k)| {
         let arr = build_bd_array(i, j, k);
         let path = format!("MapData/BD/bd-{i}-{j}-{k}.npy");
-        write_npy(path, &arr).unwrap();
+        write_npy_compressed(path, &arr);
         progress_bar.inc(1);
     });
 }
@@ -338,7 +339,7 @@ fn process_se_data(progress_bar: &ProgressBar) {
     chunks.into_par_iter().for_each(|(i, j, k)| {
         let arr = build_se_array(i, j, k);
         let path = format!("MapData/SE/se-{i}-{j}-{k}.npy");
-        write_npy(path, &arr).unwrap();
+        write_npy_compressed(path, &arr);
         progress_bar.inc(1);
     });
 }
@@ -389,7 +390,31 @@ fn process_heuristic_data(max_distance: usize) {
             }
         }
     }
-    write_npy("HeuristicData/l_infinity_cds.npy", &arr).unwrap();
+    write_npy_compressed("HeuristicData/l_infinity_cds.npy", &arr);
+}
+
+pub fn compress_existing() {
+    let mut paths: Vec<String> = Vec::new();
+    paths.push("HeuristicData/l_infinity_cds.npy".to_string());
+    for i in 0..5 {
+        for j in 0..10 {
+            for k in 0..4 {
+                paths.push(format!("MapData/Move/move-{i}-{j}-{k}.npy"));
+                paths.push(format!("MapData/Walk/walk-{i}-{j}-{k}.npy"));
+                paths.push(format!("MapData/BD/bd-{i}-{j}-{k}.npy"));
+                paths.push(format!("MapData/SE/se-{i}-{j}-{k}.npy"));
+            }
+        }
+    }
+    paths.into_par_iter().for_each(|path| {
+        if Path::new(&path).try_exists().unwrap_or(false) {
+            let raw = fs::read(&path).unwrap();
+            let file = fs::File::create(&path).unwrap();
+            let mut encoder = ZlibEncoder::new(file, Compression::default());
+            encoder.write_all(&raw).unwrap();
+            encoder.finish().unwrap();
+        }
+    });
 }
 
 pub fn setup(reset: bool) {

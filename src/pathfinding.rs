@@ -1,6 +1,6 @@
 use pathfinding::prelude::astar;
 use ndarray::Array6;
-use ndarray_npy::read_npy;
+use crate::util::read_npy_compressed;
 use std::cmp::max;
 use crate::{map_section::MapSection,
             state::State};
@@ -36,7 +36,7 @@ pub struct Heuristic {
 
 impl Heuristic {
     pub fn new() -> Heuristic{
-        let data: Array6<u64> = read_npy("HeuristicData/l_infinity_cds.npy").unwrap();
+        let data: Array6<u64> = read_npy_compressed("HeuristicData/l_infinity_cds.npy");
         Heuristic {
             data
         }

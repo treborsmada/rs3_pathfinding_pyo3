@@ -1,7 +1,6 @@
 use ndarray::{Array3, Axis, concatenate};
-use ndarray_npy::read_npy;
-use std::{collections::{HashMap},
-          cmp};
+use std::{collections::HashMap, cmp};
+use crate::util::read_npy_compressed;
 
 #[derive(Debug)]
 pub struct MapSection {
@@ -171,7 +170,7 @@ fn build_bd_array(x_start: usize, x_end: usize, y_start: usize, y_end: usize, fl
         let mut row  = Vec::new();
         for i in chunk_x.0..=chunk_x.1 {
             let path = format!("MapData/BD/bd-{i}-{j}-{floor}.npy");
-            let arr: Array3<u64> = read_npy(path).unwrap();
+            let arr: Array3<u64> = read_npy_compressed(path);
             let x_1 = cmp::max(x_start % chunk_size,(i - chunk_x.0) * chunk_size) - (i - chunk_x.0) * chunk_size;
             let x_2 = cmp::min(x_end - x_start + (x_start % chunk_size) + 1, chunk_size);
             let y_1 = cmp::max(y_start % chunk_size, (j - chunk_y.0) * chunk_size) - (j - chunk_y.0) * chunk_size;
@@ -195,7 +194,7 @@ fn build_se_array(x_start: usize, x_end: usize, y_start: usize, y_end: usize, fl
         let mut row  = Vec::new();
         for i in chunk_x.0..=chunk_x.1 {
             let path = format!("MapData/SE/se-{i}-{j}-{floor}.npy");
-            let arr: Array3<u8> = read_npy(path).unwrap();
+            let arr: Array3<u8> = read_npy_compressed(path);
             let x_1 = cmp::max(x_start % chunk_size,(i - chunk_x.0) * chunk_size) - (i - chunk_x.0) * chunk_size;
             let x_2 = cmp::min(x_end - x_start + (x_start % chunk_size) + 1, chunk_size);
             let y_1 = cmp::max(y_start % chunk_size, (j - chunk_y.0) * chunk_size) - (j - chunk_y.0) * chunk_size;
@@ -219,7 +218,7 @@ fn build_walk_array(x_start: usize, x_end: usize, y_start: usize, y_end: usize, 
         let mut row  = Vec::new();
         for i in chunk_x.0..=chunk_x.1 {
             let path = format!("MapData/Walk/walk-{i}-{j}-{floor}.npy");
-            let arr: Array3<u64> = read_npy(path).unwrap();
+            let arr: Array3<u64> = read_npy_compressed(path);
             let x_1 = cmp::max(x_start % chunk_size,(i - chunk_x.0) * chunk_size) - (i - chunk_x.0) * chunk_size;
             let x_2 = cmp::min(x_end - x_start + (x_start % chunk_size) + 1, chunk_size);
             let y_1 = cmp::max(y_start % chunk_size, (j - chunk_y.0) * chunk_size) - (j - chunk_y.0) * chunk_size;
