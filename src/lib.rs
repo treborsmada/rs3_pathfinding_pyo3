@@ -45,7 +45,7 @@ fn setup(reset: bool) {
 }
 
 #[pymodule]
-fn rs3_pathfinding(_py: Python, m: &PyModule) -> PyResult<()> {
+fn rs3_pathfinding(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(a_star, m)?)?;
     m.add_function(wrap_pyfunction!(setup, m)?)?;
     Ok(())
