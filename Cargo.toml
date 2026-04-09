@@ -17,3 +17,4 @@ pathfinding = "4.9.1"
 indicatif = "0.17.8"
 rayon = "1.10"
 flate2 = "1"
+mimalloc = { version = "0.1", default-features = false }

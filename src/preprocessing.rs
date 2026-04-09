@@ -426,7 +426,7 @@ pub fn setup(reset: bool) {
     fs::create_dir_all("HeuristicData").unwrap();
     if !Path::new("HeuristicData/l_infinity_cds.npy").try_exists().unwrap() || reset {
         progress_bar.set_message("Generating heuristic data");
-        process_heuristic_data(250);
+        process_heuristic_data(500);
     }
     progress_bar.inc(1);
     let mut moves = true;

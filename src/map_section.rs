@@ -17,10 +17,13 @@ pub struct MapSection {
 
 impl MapSection {
 
-    pub fn surge_range(&self, x: u16, y: u16, direction: u8) -> (usize, usize) {
+    pub fn surge_range(&self, x: u16, y: u16, direction: u8) -> Option<(usize, usize)> {
         let (x, y, direction) = (x as usize, y as usize, direction as usize);
-        let offset = (self.se_data[[x-self.x_start, y - self.y_start, direction]] & 15) as usize;
-        match direction {
+        let xi = x.wrapping_sub(self.x_start);
+        let yi = y.wrapping_sub(self.y_start);
+        if xi >= self.x_len || yi >= self.y_len { return None; }
+        let offset = (self.se_data[[xi, yi, direction]] & 15) as usize;
+        Some(match direction {
             0 => (x, y + offset),
             1 => (x + offset, y + offset),
             2 => (x + offset, y),
@@ -30,13 +33,16 @@ impl MapSection {
             6 => (x - offset, y),
             7 => (x - offset, y + offset),
             _ => panic!()
-        }
+        })
     }
 
-    pub fn escape_range(&self, x: u16, y: u16, direction: u8) -> (usize, usize) {
+    pub fn escape_range(&self, x: u16, y: u16, direction: u8) -> Option<(usize, usize)> {
         let (x, y, direction) = (x as usize, y as usize, direction as usize);
-        let offset = (self.se_data[[x-self.x_start, y - self.y_start, direction]] >> 4) as usize;
-        match direction {
+        let xi = x.wrapping_sub(self.x_start);
+        let yi = y.wrapping_sub(self.y_start);
+        if xi >= self.x_len || yi >= self.y_len { return None; }
+        let offset = (self.se_data[[xi, yi, direction]] >> 4) as usize;
+        Some(match direction {
             0 => (x, y - offset),
             1 => (x - offset, y - offset),
             2 => (x - offset, y),
@@ -46,7 +52,7 @@ impl MapSection {
             6 => (x + offset, y),
             7 => (x + offset, y - offset),
             _ => panic!()
-        }
+        })
     }
 
     pub fn create_map_section(x_start: usize, x_end: usize, y_start: usize, y_end: usize, floor: usize) -> MapSection {

@@ -25,11 +25,11 @@ impl State {
         let pos_x = self.pos_x;
         let pos_y = self.pos_y;
         let direction = self.direction;
-        let scd = max(self.scd, 1) - 1;
-        let sscd = max(self.sscd, 1) - 1;
-        let ecd= max(self.ecd, 1) - 1;
-        let secd = max(self.secd, 1) - 1;
-        let bdcd = max(self.bdcd, 1) - 1;
+        let scd = self.scd.saturating_sub(1);
+        let sscd = self.sscd.saturating_sub(1);
+        let ecd = self.ecd.saturating_sub(1);
+        let secd = self.secd.saturating_sub(1);
+        let bdcd = self.bdcd.saturating_sub(1);
         State {
             pos_x,
             pos_y,
@@ -55,9 +55,9 @@ impl State {
         }
     }
 
-    pub fn surge(&self, section: &MapSection) -> State {
-        let (new_x, new_y) = section.surge_range(self.pos_x, self.pos_y, self.direction);
-        if self.scd == 0 {
+    pub fn surge(&self, section: &MapSection) -> Option<State> {
+        let (new_x, new_y) = section.surge_range(self.pos_x, self.pos_y, self.direction)?;
+        Some(if self.scd == 0 {
             State {
                 pos_x: new_x as u16, pos_y: new_y as u16, direction: self.direction,
                 scd: 17,
@@ -75,12 +75,12 @@ impl State {
                 secd: max(2, self.secd),
                 bdcd: self.bdcd,
             }
-        } else { panic!() }
+        } else { panic!() })
     }
 
-    pub fn escape(&self, section: &MapSection) -> State {
-        let (new_x, new_y) = section.escape_range(self.pos_x, self.pos_y, self.direction);
-        if self.ecd == 0 {
+    pub fn escape(&self, section: &MapSection) -> Option<State> {
+        let (new_x, new_y) = section.escape_range(self.pos_x, self.pos_y, self.direction)?;
+        Some(if self.ecd == 0 {
             State {
                 pos_x: new_x as u16, pos_y: new_y as u16, direction: self.direction,
                 scd: max(2, self.scd),
@@ -98,7 +98,7 @@ impl State {
                 secd: 17,
                 bdcd: self.bdcd,
             }
-        } else { panic!() }
+        } else { panic!() })
     }
 
     pub fn bd(&self, x:u16, y: u16, direction: u8) -> State{
@@ -112,6 +112,19 @@ impl State {
             ecd: self.ecd,
             secd: self.secd,
             bdcd: 17,
+        }
+    }
+
+    pub fn teleport(&self, x: u16, y: u16, cost: u8) -> State {
+        State {
+            pos_x: x,
+            pos_y: y,
+            direction: self.direction,
+            scd: self.scd.saturating_sub(cost),
+            sscd: self.sscd.saturating_sub(cost),
+            ecd: self.ecd.saturating_sub(cost),
+            secd: self.secd.saturating_sub(cost),
+            bdcd: self.bdcd.saturating_sub(cost),
         }
     }
 
