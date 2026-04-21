@@ -13,6 +13,8 @@ use crate::util::{adj_positions, free_direction, read_npy_compressed, write_npy_
 const RS_HEIGHT: usize = 12800;
 const RS_LENGTH: usize = 6400;
 
+/// Per-chunk data cache used during preprocessing. Chunks are loaded on demand and retained for
+/// the lifetime of one chunk's build pass to avoid redundant disk I/O.
 struct Process {
     movement_data: HashMap<(usize, usize, usize), Array2<u8>>,
     bd_data: HashMap<(usize, usize, usize), Array3<u64>>
@@ -26,6 +28,13 @@ impl Process {
         }
     }
 
+    /// BFS walk reachability within a 5×5 window centred on (x, y).
+    ///
+    /// Returns a list of (dest_x, dest_y, direction) for every tile reachable in at most 2 walk
+    /// steps. The BFS is capped to depth 2: direct neighbours are enqueued (depth 1) and their
+    /// neighbours are checked but not enqueued further (depth 2). A 5×5 visited grid prevents
+    /// duplicates. The iteration order `(2*i + i/4) % 8` visits cardinal directions before
+    /// diagonals to give consistent direction assignment when two paths reach the same tile.
     fn walk_range(&mut self, x: usize, y: usize, floor: usize) -> Vec<(usize, usize, usize)> {
         let mut tiles = Vec::with_capacity(25);
         let start = self.get_movement_data(x, y, floor);
@@ -69,12 +78,21 @@ impl Process {
         tiles
     }
 
+    /// Computes all BD-reachable tiles within the 21×21 window around (x, y).
+    ///
+    /// BD travels diagonally first, then fans out cardinally when blocked. The four recursive
+    /// calls cover the four diagonal quadrants: NE (dir=1), SE (dir=3), SW (dir=5), NW (dir=7).
+    /// Each call supplies the two cardinal directions used when the diagonal is blocked.
     fn bd_range(&mut self, x: usize, y: usize, floor: usize) -> Vec<(usize, usize)> {
         // 21x21 visited grid indexed by (dx+10, dy+10) where dx,dy in [-10,10]
         let mut visited = [[false; 21]; 21];
+        // NE quadrant: diagonal=NE(1), horizontal=E(2), vertical=N(0)
         self.bd_range_recursion(x, y, x, y, floor, 1, 2, 0, 0, 0, &mut visited);
+        // SE quadrant: diagonal=SE(3), horizontal=E(2), vertical=S(4)
         self.bd_range_recursion(x, y, x, y, floor, 3, 2, 4, 0, 0, &mut visited);
+        // SW quadrant: diagonal=SW(5), horizontal=W(6), vertical=S(4)
         self.bd_range_recursion(x, y, x, y, floor, 5, 6, 4, 0, 0, &mut visited);
+        // NW quadrant: diagonal=NW(7), horizontal=W(6), vertical=N(0)
         self.bd_range_recursion(x, y, x, y, floor, 7, 6, 0, 0, 0, &mut visited);
         let mut tiles = Vec::new();
         for dx in 0..21usize {
@@ -87,6 +105,15 @@ impl Process {
         tiles
     }
 
+    /// Recursive BD reach traversal for one diagonal quadrant.
+    ///
+    /// Attempts to step diagonally (`direction`) as far as possible (up to 10 tiles each axis),
+    /// then falls back to the `horizontal` or `vertical` cardinal when the diagonal is blocked.
+    /// After the primary path ends, it traces out all cardinal extensions from the final position
+    /// along both `horizontal` and `vertical`, marking every reachable tile in `visited`.
+    ///
+    /// `(ox, oy)` is the original tile; `(x, y)` is the current recursive position.
+    /// `dist_x`/`dist_y` track how far the path has gone horizontally/vertically.
     fn bd_range_recursion(&mut self, x: usize, y: usize, ox: usize, oy: usize, floor: usize, direction: usize, horizontal: usize, vertical: usize, dist_x: usize, dist_y: usize, visited: &mut [[bool; 21]; 21]) {
         let mut dist_x = dist_x;
         let mut dist_y = dist_y;
@@ -126,6 +153,11 @@ impl Process {
         }
     }
 
+    /// Returns how far Surge can travel from (x, y) in `direction` (0 = cannot Surge, 1–10 tiles).
+    ///
+    /// Surge travels in the given direction and lands on the furthest BD-reachable tile along
+    /// that ray. We scan the BD bitset of the origin tile along the ray and take the last set bit.
+    /// `current` starts at bit 220 (the centre of the 21×21 window, index 10*21+10).
     fn surge_offset(&mut self, x: usize, y: usize, floor: usize, direction: usize) -> u8 {
         let bd_data = self.get_bd_data(x, y, floor);
         let (d_x, d_y): (i64, i64) = match direction {
@@ -150,6 +182,10 @@ impl Process {
         offset
     }
 
+    /// Returns how far Escape can travel from (x, y) when facing `direction` (0–7 tiles).
+    ///
+    /// Escape moves opposite to `direction`, so the delta signs are reversed versus Surge.
+    /// Scans up to 7 steps (Escape's maximum range) instead of 10.
     fn escape_offset(&mut self, x: usize, y: usize, floor: usize, direction: usize) -> u8 {
         let bd_data = self.get_bd_data(x, y, floor);
         let (d_x, d_y): (i64, i64) = match direction {
@@ -206,6 +242,12 @@ impl Process {
         }
     }
 
+    /// Encodes walk reachability for tile (x, y) into two packed u64s.
+    ///
+    /// The 5×5 window (25 tiles) is stored as 25 4-bit nibbles in a u128.
+    /// Each nibble starts as 15 (unreachable); for each reachable tile we subtract
+    /// `(15 - direction) << (4 * flat_index)` to store the actual direction in the nibble.
+    /// The u128 is then split into low and high u64.
     fn process_walk_data(&mut self, x: usize, y: usize, floor: usize) -> (u64, u64) {
         let tiles = self.walk_range(x, y, floor);
         let mut walk_data = u128::MAX;
@@ -220,6 +262,8 @@ impl Process {
         (walk_data as u64, (walk_data >> 64) as u64)
     }
 
+    /// Encodes BD reachability for tile (x, y) as a 441-bit bitset in 7 × u64.
+    /// Bit `k = dy*21 + dx` (with dx=tile.0-x+10, dy=tile.1-y+10) is set for each reachable tile.
     fn process_bd_data(&mut self, x: usize, y: usize, floor: usize) -> [u64; 7] {
         let tiles = self.bd_range(x, y, floor);
         let mut bd_data = [0u64; 7];
@@ -314,6 +358,8 @@ fn process_bd_data(progress_bar: &ProgressBar) {
     });
 }
 
+/// Builds the SE array for one chunk. Each element packs Surge offset in the low nibble and
+/// Escape offset in the high nibble: `value = surge_offset | (escape_offset << 4)`.
 fn build_se_array(chunk_x: usize, chunk_y: usize, floor: usize) -> Array3<u8> {
     let chunk_size = 1280;
     let mut process = Process::new();

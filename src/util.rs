@@ -32,11 +32,15 @@ where
     Array::<A, D>::read_npy(Cursor::new(npy_bytes)).unwrap()
 }
 
+/// Returns true if the collision byte `data` has movement allowed in `direction`.
+/// Directions 0–7 = N, NE, E, SE, S, SW, W, NW.
+/// The bitmask positions in the collision byte are non-sequential: [N=2, NE=32, E=4, SE=64, S=8, SW=128, W=1, NW=16].
 pub fn free_direction(data: u8, direction: usize) -> bool{
     let t = [2, 32, 4, 64, 8, 128, 1, 16];
     data & t[direction] != 0
 }
 
+/// Returns the 8 adjacent tile coordinates in direction order N, NE, E, SE, S, SW, W, NW.
 pub fn adj_positions(x: usize, y:usize) -> [(usize, usize); 8] {
     [(x, y + 1), (x + 1, y + 1), (x + 1, y), (x + 1, y - 1), (x, y - 1), (x - 1, y - 1), (x - 1, y), (x - 1, y + 1)]
 }

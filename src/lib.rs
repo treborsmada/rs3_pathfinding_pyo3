@@ -31,6 +31,8 @@ fn a_star(start: (u16, u16), end: (u16, u16), floor: usize, setup: bool, telepor
         secd: 0,
         bdcd: 0,
     };
+    // Expand the map section by a fixed radius around the bounding box of all waypoints so that
+    // the A* search has room to manoeuvre beyond the straight-line corridor.
     let radius = 150;
     let mut x_min = min(start.0 as usize, end.0 as usize);
     let mut x_max = max(start.0 as usize, end.0 as usize);
