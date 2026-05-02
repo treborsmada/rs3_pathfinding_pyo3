@@ -79,7 +79,14 @@ impl<'a> Heuristic<'a> {
         self.teleports.iter().fold(h_direct, |acc, &(tx, ty, cost)| {
             let mut dest_dist = max(tx.abs_diff(end.0), ty.abs_diff(end.1)) as usize;
             if dest_dist > 0 { dest_dist -= 1; }
-            let h_dest = self.data[[dest_dist.min(max_d), 0, 0, 0, 0, 0]] as usize;
+            let h_dest = self.data[[
+                dest_dist.min(max_d),
+                state.scd.saturating_sub(cost) as usize,
+                state.sscd.saturating_sub(cost) as usize,
+                state.ecd.saturating_sub(cost) as usize,
+                state.secd.saturating_sub(cost) as usize,
+                state.bdcd.saturating_sub(cost) as usize,
+            ]] as usize;
             acc.min(cost as usize + h_dest)
         })
     }
